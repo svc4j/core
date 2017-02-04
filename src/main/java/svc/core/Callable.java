@@ -32,7 +32,7 @@ import svc.core.base.Log;
  */
 public class Callable {
 	private Map<Class<?>, Inject> _injects = new HashMap<>();
-	private Map<String, ThreadLocal<InjectSet>> _localSessions = new HashMap<>();
+	private ThreadLocal<Map<String, InjectSet>> _localSessions = new ThreadLocal<>();
 	private Map<String, CallableInfo> _objects = new HashMap<String, CallableInfo>();
 	private Map<Integer, AuthChecker> _authCheckers = new HashMap<>();
 	private Map<String, ParameterChecker> _parmCheckers = new HashMap<>();
@@ -51,8 +51,8 @@ public class Callable {
 		_parmCheckers.put(type, checker);
 	}
 
-	public void setInject(Class<?> type, Inject checker) {
-		_injects.put(type, checker);
+	public void setInject(Class<?> type, Inject inject) {
+		_injects.put(type, inject);
 	}
 
 	public Object call(String target, JSONObject args, Class<? extends Annotation> callable_ann,
@@ -200,24 +200,30 @@ public class Callable {
 					} else {
 						// 没有的参数从线程本地化中获取
 						String tl_key = parm_info.type + "::" + parm_info.name;
-						ThreadLocal<InjectSet> tl = _localSessions.get(tl_key);
-						if (tl != null) {
-							InjectSet inject_set = tl.get();
-							arg = inject_set.obj;
+						
+						Map<String, InjectSet> thread_injects = _localSessions.get();
+						if (thread_injects == null) {
+							thread_injects = new HashMap<>();
+							_localSessions.set(thread_injects);
+						}
+
+						InjectSet inject_set = thread_injects.get(tl_key);
+						Object inject_object = null;
+						if (inject_set != null) {
+							inject_object = inject_set.obj;
 						} else {
 							// 第一次从工厂获取
 							Inject factory = _injects.get(parm_info.type);
 							if (factory != null) {
-								arg = factory.fetch();
-								if (arg != null) {
-									InjectSet inject_set = new InjectSet(factory, arg);
-									tl = new ThreadLocal<>();
-									_localSessions.put(tl_key, tl);
-									tl.set(inject_set);
+								inject_object = factory.fetch();
+								if (inject_object != null) {
+									inject_set = new InjectSet(factory, inject_object);
+									thread_injects.put(tl_key, inject_set);
 									topInjects.add(tl_key);
 								}
 							}
 						}
+						arg = inject_object;
 					}
 					// 验证参数
 					String error;
@@ -261,17 +267,13 @@ public class Callable {
 			}
 		} finally {
 			for (String tl_key : topInjects) {
-				ThreadLocal<InjectSet> tl = _localSessions.get(tl_key);
-				if (tl != null) {
-					InjectSet inject_set = tl.get();
+				Map<String, InjectSet> thread_injects = _localSessions.get();
+				if (thread_injects != null) {
+					InjectSet inject_set = thread_injects.get(tl_key);
 					inject_set.factory.give(inject_set.obj);
-					_localSessions.remove(tl_key);
+					thread_injects.remove(tl_key);
 				}
 			}
-			// if (is_top_db && db != null) {
-			// db.end(db_is_ok);
-			// localSession.remove();
-			// }
 		}
 	}
 
