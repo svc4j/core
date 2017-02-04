@@ -55,8 +55,9 @@ public class Callable {
 		_injects.put(type, inject);
 	}
 
-	public Object call(String target, JSONObject args, Class<? extends Annotation> callable_ann,
-			Class<?> return_type) throws CodeMessageException {
+	@SuppressWarnings("unchecked")
+	public <E> E call(String target, JSONObject args, Class<? extends Annotation> callable_ann,
+			Class<E> return_type) throws CodeMessageException {
 		
 		String call_class = null;
 		String method_name = null;
@@ -245,7 +246,7 @@ public class Callable {
 			}
 			Object result = m.method.invoke(call_info.obj, real_args.toArray());
 			// db_is_ok = true;
-			return result;
+			return (E)result;
 		} catch (IllegalAccessException | IllegalArgumentException e) {
 			throw new CodeMessageException(e, 500, e.getMessage());
 		} catch (CodeMessageException e) {
